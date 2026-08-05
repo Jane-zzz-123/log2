@@ -17,7 +17,7 @@ st.write("欢迎使用物流分析看板，点击下方链接进入对应模块�
 dashboard_data = [
     {
         "name": "红单看板",
-        "url": "https://logisticsdatapy-kap4prpcmvgg9vm4kfppi4.streamlit.app/",
+        "url": "https://logisticsdatapy-fwkrqh6mymysx4anx4sptf.streamlit.app/",
         "description": "红单物流数据可视化分析"
     },
     {
@@ -32,13 +32,13 @@ dashboard_data = [
     },
     {
         "name": "AWD补货看板",
-        "url": "https://logisticsdataawdpy-6olhcyqpmqqfu9qwxqrwtj.streamlit.app/",
+        "url": "https://logisticsdataawdpy-gslj6jhwnlrp4muomzgytb.streamlit.app/",
         "description": "AWD补货物流数据可视化分析"
     },
     {
         "name": "物流成本分析看板",
-        "url": "https://vbm8xr9bg6uwdfsjjdm3ub.streamlit.app/",
-        "description": "AWD补货物流数据可视化分析"
+        "url": "https://fz52zwequjhyswrta5uscf.streamlit.app/",
+        "description": "物流成本数据可视化分析"
     }
 ]
 
