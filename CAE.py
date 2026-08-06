@@ -390,6 +390,113 @@ with t5:
 
 st.markdown("---")
 
+def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
+    month_total = df_filter.groupby(time_col).agg(
+        总费用=("总费用", "sum"),
+        总运费=("总运费", "sum"),
+        入库配置费=("入库配置费折算RMB", "sum"),
+        报关费=("报关费", "sum"),
+        总重量=("重量", "sum")
+    ).reset_index()
+    month_total = month_total.sort_values(time_col).reset_index(drop=True)
+
+    if len(month_total) < 2:
+        return "<div style='padding:16px;background:#f8f9fa;border-radius:10px;margin:10px 0;line-height:1.7'>暂无上期数据，无法开展环比成本归因分析</div>"
+
+    curr = month_total.iloc[-1]
+    prev = month_total.iloc[-2]
+    curr_period = curr[time_col]
+    prev_period = prev[time_col]
+
+    # 整体总费用变动
+    cost_gap = curr["总费用"] - prev["总费用"]
+    cost_rate = cost_gap / prev["总费用"] if prev["总费用"] != 0 else 0
+    weight_gap = curr["总重量"] - prev["总重量"]
+    weight_rate = weight_gap / prev["总重量"] if prev["总重量"] != 0 else 0
+
+    # 均价
+    curr_avg_price = curr["总费用"] / curr["总重量"] if curr["总重量"] else 0
+    prev_avg_price = prev["总费用"] / prev["总重量"] if prev["总重量"] else 0
+    price_gap = curr_avg_price - prev_avg_price
+    price_rate = price_gap / prev_avg_price if prev_avg_price else 0
+
+    # 分物流渠道聚合
+    channel_group = df_filter.groupby([time_col, "实际物流方式"]).agg(
+        渠道费用=("总费用", "sum"),
+        渠道重量=("重量", "sum")
+    ).reset_index()
+
+    curr_channel = channel_group[channel_group[time_col]==curr_period].copy()
+    prev_channel = channel_group[channel_group[time_col]==prev_period].copy()
+    channel_merge = pd.merge(
+        curr_channel, prev_channel,
+        on="实际物流方式", how="outer", suffixes=("_curr", "_prev")
+    ).fillna(0)
+    channel_merge["费用变动"] = channel_merge["渠道费用_curr"] - channel_merge["渠道费用_prev"]
+    channel_merge["费用变动绝对值"] = channel_merge["费用变动"].abs()
+    top3_channel = channel_merge.sort_values("费用变动绝对值", ascending=False).head(3)
+
+    # 涨跌颜色格式化
+    def color_up(rate):
+        if rate > 0:
+            return f"<span style='color:#d32f2f'>上涨{rate:.2%}</span>"
+        else:
+            return f"<span style='color:#388e3c'>下跌{abs(rate):.2%}</span>"
+
+    text_parts = []
+    text_parts.append(f"<h4>📌 {curr_period}物流成本环比{prev_period}整体归因分析</h4>")
+    text_parts.append(f"本期总物流成本 {curr['总费用']:,.0f} 元，上期 {prev['总费用']:,.0f} 元，整体{color_up(cost_rate)}，变动金额 {cost_gap:,.0f} 元。<br>")
+
+    # 重量+单价双因子拆解
+    text_parts.append(f"🔹 出货体量：总重量 {curr['总重量']:,.0f}kg，上期 {prev['总重量']:,.0f}kg，重量{color_up(weight_rate)}；")
+    text_parts.append(f"🔹 单位均价：整体单价 {curr_avg_price:.2f}元/kg，上期 {prev_avg_price:.2f}元/kg，单价{color_up(price_rate)}。<br>")
+
+    # 核心归因结论
+    if cost_rate > 0:
+        if weight_rate > 0 and price_rate > 0:
+            text_parts.append("👉 成本上涨由【出货重量增加 + 物流单价上浮】共同驱动；")
+        elif weight_rate > 0:
+            text_parts.append("👉 成本上涨主因是发货货量提升，平均物流单价有所下降；")
+        else:
+            text_parts.append("👉 货量相比上期减少，总成本上涨完全来自各渠道单价涨价；")
+    else:
+        if weight_rate < 0 and price_rate < 0:
+            text_parts.append("👉 成本下降由【出货重量减少 + 物流单价回落】共同作用；")
+        elif weight_rate < 0:
+            text_parts.append("👉 成本下降核心是出货量减少，均价小幅上涨；")
+        else:
+            text_parts.append("👉 出货体量未减少，成本下降得益于整体物流单价降低。")
+    text_parts.append("<br>")
+
+    # 分项费用变化
+    freight_rate = (curr["总运费"] - prev["总运费"]) / prev["总运费"] if prev["总运费"] else 0
+    storage_rate = (curr["入库配置费"] - prev["入库配置费"]) / prev["入库配置费"] if prev["入库配置费"] else 0
+    customs_rate = (curr["报关费"] - prev["报关费"]) / prev["报关费"] if prev["报关费"] else 0
+    text_parts.append(f"🔹 分项费用变化：总运费{color_up(freight_rate)}、入库配置费{color_up(storage_rate)}、报关费{color_up(customs_rate)}<br>")
+
+    # 渠道拆解TOP3
+    text_parts.append("🔍 影响成本最大的3类物流渠道明细：")
+    for _, row in top3_channel.iterrows():
+        ch_name = row["实际物流方式"]
+        curr_cost = row["渠道费用_curr"]
+        prev_cost = row["渠道费用_prev"]
+        diff_cost = row["费用变动"]
+        diff_weight = row["渠道重量_curr"] - row["渠道重量_prev"]
+
+        if prev_cost == 0:
+            line = f"<br>• {ch_name}：上期无发货，本期新增花费{curr_cost:,.0f}元，拉高整体成本"
+        else:
+            ch_rate = diff_cost / prev_cost
+            weight_desc = "出货量提升" if diff_weight > 0 else "出货量缩减"
+            line = f"<br>• {ch_name}：费用环比{color_up(ch_rate)}，变动金额{diff_cost:,.0f}元，渠道货量{weight_desc}"
+        text_parts.append(line)
+
+    text_parts.append("<br><div style='font-size:13px;color:#666'>注：红色=上涨，绿色=下跌；优先展示对总成本影响最大的渠道</div>")
+    full_html = f"<div style='padding:16px;background:#f8f9fa;border-radius:10px;margin:12px 0;line-height:1.7'>{''.join(text_parts)}</div>"
+    return full_html
+
+
+
 # ==============================================================================
 # 💰 第四部分：单价 & 总金额明细分析
 # ==============================================================================
