@@ -490,7 +490,7 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
             text_parts.append("👉 出货体量未减少，成本下降得益于整体物流单价降低。")
     text_parts.append("<br>")
 
-    # ========== 渠道明细扩展：上期费用、本期费用、货量、单价全部带出 ==========
+    # ========== 全部物流渠道明细，不再限制TOP3 ==========
     channel_group = df_filter.groupby([time_col, "实际物流方式"]).agg(
         渠道费用=("总费用", "sum"),
         渠道重量=("重量", "sum")
@@ -516,10 +516,11 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
     # 货量增减描述
     channel_merge["货量变化说明"] = channel_merge.apply(lambda x: "出货量提升" if x["渠道重量_curr"]>x["渠道重量_prev"] else "出货量缩减", axis=1)
 
-    top3_channel = channel_merge.sort_values("费用变动绝对值", ascending=False).head(3)
+    # 去掉head(3)，展示全部渠道
+    all_channel = channel_merge.sort_values("费用变动绝对值", ascending=False)
 
-    text_parts.append("🔍 影响成本最大的3类物流渠道明细：")
-    for _, row in top3_channel.iterrows():
+    text_parts.append("🔍 全部物流渠道明细（按对总成本影响幅度排序）：")
+    for _, row in all_channel.iterrows():
         ch_name = row["实际物流方式"]
         f_prev = row["渠道费用_prev"]
         f_curr = row["渠道费用_curr"]
@@ -535,7 +536,7 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
         if f_prev == 0:
             line = (
                 f"<br>• {ch_name}：上期无发货，上期费用¥0，本期费用¥{f_curr:,.0f}，新增花费¥{f_diff:,.0f}元；"
-                f"上期货量0kg、本期货量{w_curr:,.0f}kg；上期单价¥0/kg、本期单价¥{p_curr:.2f}/kg，渠道货量{weight_desc}"
+                f"上期货量0kg、本期货量{w_curr:,.0f}kg；上期单价¥0.00/kg、本期单价¥{p_curr:.2f}/kg，渠道货量{weight_desc}"
             )
         else:
             rate_str = color_rate(f_rate, f"{f_rate:.2%}")
@@ -545,7 +546,7 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
             )
         text_parts.append(line)
 
-    text_parts.append("<br><div style='font-size:13px;color:#666'>注：红色=上涨，绿色=下跌；优先展示对总成本影响最大的渠道</div>")
+    text_parts.append("<br><div style='font-size:13px;color:#666'>注：红色=上涨，绿色=下跌；渠道按对总成本影响幅度从大到小排序</div>")
 
     full_html = (
         "<div style='padding:16px;background:#f8f9fa;border-radius:10px;margin:12px 0;line-height:1.7'>"
