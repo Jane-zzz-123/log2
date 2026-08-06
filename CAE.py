@@ -407,7 +407,6 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
     curr_period = curr[time_col]
     prev_period = prev[time_col]
 
-    # 基础指标计算
     # 总费用
     cost_c = curr["总费用"]
     cost_p = prev["总费用"]
@@ -444,94 +443,40 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
     customs_diff = customs_c - customs_p
     customs_rate = customs_diff / customs_p if customs_p else 0
 
-    # 颜色渲染函数
+    # 颜色渲染
     def color_rate(rate_val, text):
         if rate_val > 0:
             return f"<span style='color:#d32f2f;font-weight:bold'>{text}</span>"
         else:
             return f"<span style='color:#388e3c;font-weight:bold'>{text}</span>"
 
-    # ========== 1、构建HTML对比表格 ==========
-    table_html = '''
-    <table border="1" cellpadding="8" cellspacing="0" style="width:100%;border-collapse:collapse;margin-bottom:15px;border:#ddd solid 1px;">
-        <thead style="background:#eef2f7;">
-            <tr>
-                <th>指标项目</th>
-                <th>上期({prev_period})</th>
-                <th>本期({curr_period})</th>
-                <th>增减差额</th>
-                <th>环比变动</th>
-            </tr>
-        </thead>
-        <tbody>
-    '''.format(prev_period=prev_period, curr_period=curr_period)
+    # 表格HTML 整段单行拼接，杜绝换行错乱
+    table_html = (
+        f"<table border='1' cellpadding='8' cellspacing='0' style='width:100%;border-collapse:collapse;margin-bottom:15px;border:#ddd solid 1px;'>"
+        f"<thead style='background:#eef2f7;'><tr><th>指标项目</th><th>上期({prev_period})</th><th>本期({curr_period})</th><th>增减差额</th><th>环比变动</th></tr></thead><tbody>"
+    )
 
-    # 逐行填充表格
     rows = [
-        {
-            "name": "整体物流总费用",
-            "pre": f"¥{cost_p:,.0f}",
-            "cur": f"¥{cost_c:,.0f}",
-            "diff": f"¥{cost_diff:,.0f}",
-            "rate": cost_rate
-        },
-        {
-            "name": "发货总重量",
-            "pre": f"{weight_p:,.0f}kg",
-            "cur": f"{weight_c:,.0f}kg",
-            "diff": f"{weight_diff:,.0f}kg",
-            "rate": weight_rate
-        },
-        {
-            "name": "平均物流单价",
-            "pre": f"¥{price_p:.2f}/kg",
-            "cur": f"¥{price_c:.2f}/kg",
-            "diff": f"¥{price_diff:.2f}/kg",
-            "rate": price_rate
-        },
-        {
-            "name": "总运费",
-            "pre": f"¥{freight_p:,.0f}",
-            "cur": f"¥{freight_c:,.0f}",
-            "diff": f"¥{freight_diff:,.0f}",
-            "rate": freight_rate
-        },
-        {
-            "name": "入库配置费",
-            "pre": f"¥{store_p:,.0f}",
-            "cur": f"¥{store_c:,.0f}",
-            "diff": f"¥{store_diff:,.0f}",
-            "rate": store_rate
-        },
-        {
-            "name": "报关费",
-            "pre": f"¥{customs_p:,.0f}",
-            "cur": f"¥{customs_c:,.0f}",
-            "diff": f"¥{customs_diff:,.0f}",
-            "rate": customs_rate
-        }
+        {"name": "整体物流总费用", "pre": f"¥{cost_p:,.0f}", "cur": f"¥{cost_c:,.0f}", "diff": f"¥{cost_diff:,.0f}", "rate": cost_rate},
+        {"name": "发货总重量", "pre": f"{weight_p:,.0f}kg", "cur": f"{weight_c:,.0f}kg", "diff": f"{weight_diff:,.0f}kg", "rate": weight_rate},
+        {"name": "平均物流单价", "pre": f"¥{price_p:.2f}/kg", "cur": f"¥{price_c:.2f}/kg", "diff": f"¥{price_diff:.2f}/kg", "rate": price_rate},
+        {"name": "总运费", "pre": f"¥{freight_p:,.0f}", "cur": f"¥{freight_c:,.0f}", "diff": f"¥{freight_diff:,.0f}", "rate": freight_rate},
+        {"name": "入库配置费", "pre": f"¥{store_p:,.0f}", "cur": f"¥{store_c:,.0f}", "diff": f"¥{store_diff:,.0f}", "rate": store_rate},
+        {"name": "报关费", "pre": f"¥{customs_p:,.0f}", "cur": f"¥{customs_c:,.0f}", "diff": f"¥{customs_diff:,.0f}", "rate": customs_rate}
     ]
 
     for row in rows:
         rate_text = f"{row['rate']:.2%}"
         colored_rate = color_rate(row["rate"], rate_text)
-        table_html += f'''
-        <tr>
-            <td>{row["name"]}</td>
-            <td>{row["pre"]}</td>
-            <td>{row["cur"]}</td>
-            <td>{row["diff"]}</td>
-            <td>{colored_rate}</td>
-        </tr>
-        '''
+        table_html += f"<tr><td>{row['name']}</td><td>{row['pre']}</td><td>{row['cur']}</td><td>{row['diff']}</td><td>{colored_rate}</td></tr>"
+
     table_html += "</tbody></table>"
 
-    # ========== 2、原有归因文案部分 ==========
     text_parts = []
     text_parts.append(f"<h4>📌 {curr_period}物流成本环比{prev_period}整体归因分析</h4>")
     text_parts.append(table_html)
 
-    # 重量+单价归因结论
+    # 归因结论
     if cost_rate > 0:
         if weight_rate > 0 and price_rate > 0:
             text_parts.append("👉 成本上涨由【出货重量增加 + 物流单价上浮】共同驱动；")
@@ -548,7 +493,7 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
             text_parts.append("👉 出货体量未减少，成本下降得益于整体物流单价降低。")
     text_parts.append("<br>")
 
-    # ========== 3、物流渠道拆解TOP3 ==========
+    # 渠道TOP3
     channel_group = df_filter.groupby([time_col, "实际物流方式"]).agg(
         渠道费用=("总费用", "sum"),
         渠道重量=("重量", "sum")
@@ -583,7 +528,11 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
 
     text_parts.append("<br><div style='font-size:13px;color:#666'>注：红色=上涨，绿色=下跌；优先展示对总成本影响最大的渠道</div>")
 
-    full_html = f"<div style='padding:16px;background:#f8f9fa;border-radius:10px;margin:12px 0;line-height:1.7'>{''.join(text_parts)}</div>"
+    full_html = (
+        "<div style='padding:16px;background:#f8f9fa;border-radius:10px;margin:12px 0;line-height:1.7'>"
+        + "".join(text_parts)
+        + "</div>"
+    )
     return full_html
 # ========== 2. 新增【调用代码】关键！！ ==========
 # 自动匹配按周期/按月视图
