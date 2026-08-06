@@ -389,7 +389,9 @@ with t5:
     st.plotly_chart(fig5, use_container_width=True)
 
 st.markdown("---")
+
 def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
+    import pandas as pd
     month_total = df_filter.groupby(time_col).agg(
         总费用=("总费用", "sum"),
         总运费=("总运费", "sum"),
@@ -407,50 +409,45 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
     curr_period = curr[time_col]
     prev_period = prev[time_col]
 
-    # 总费用
+    # 整体指标计算
     cost_c = curr["总费用"]
     cost_p = prev["总费用"]
     cost_diff = cost_c - cost_p
     cost_rate = cost_diff / cost_p if cost_p != 0 else 0
 
-    # 重量
     weight_c = curr["总重量"]
     weight_p = prev["总重量"]
     weight_diff = weight_c - weight_p
     weight_rate = weight_diff / weight_p if weight_p != 0 else 0
 
-    # 均价
     price_c = cost_c / weight_c if weight_c else 0
     price_p = cost_p / weight_p if weight_p else 0
     price_diff = price_c - price_p
     price_rate = price_diff / price_p if price_p else 0
 
-    # 运费
     freight_c = curr["总运费"]
     freight_p = prev["总运费"]
     freight_diff = freight_c - freight_p
     freight_rate = freight_diff / freight_p if freight_p else 0
 
-    # 入库配置费
     store_c = curr["入库配置费"]
     store_p = prev["入库配置费"]
     store_diff = store_c - store_p
     store_rate = store_diff / store_p if store_p else 0
 
-    # 报关费
     customs_c = curr["报关费"]
     customs_p = prev["报关费"]
     customs_diff = customs_c - customs_p
     customs_rate = customs_diff / customs_p if customs_p else 0
 
-    # 颜色渲染
+    # 颜色渲染函数
     def color_rate(rate_val, text):
         if rate_val > 0:
             return f"<span style='color:#d32f2f;font-weight:bold'>{text}</span>"
         else:
             return f"<span style='color:#388e3c;font-weight:bold'>{text}</span>"
 
-    # 表格HTML 整段单行拼接，杜绝换行错乱
+    # ========== 主指标对比表格 ==========
     table_html = (
         f"<table border='1' cellpadding='8' cellspacing='0' style='width:100%;border-collapse:collapse;margin-bottom:15px;border:#ddd solid 1px;'>"
         f"<thead style='background:#eef2f7;'><tr><th>指标项目</th><th>上期({prev_period})</th><th>本期({curr_period})</th><th>增减差额</th><th>环比变动</th></tr></thead><tbody>"
@@ -476,7 +473,7 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
     text_parts.append(f"<h4>📌 {curr_period}物流成本环比{prev_period}整体归因分析</h4>")
     text_parts.append(table_html)
 
-    # 归因结论
+    # 归因文案
     if cost_rate > 0:
         if weight_rate > 0 and price_rate > 0:
             text_parts.append("👉 成本上涨由【出货重量增加 + 物流单价上浮】共同驱动；")
@@ -493,7 +490,7 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
             text_parts.append("👉 出货体量未减少，成本下降得益于整体物流单价降低。")
     text_parts.append("<br>")
 
-    # 渠道TOP3
+    # ========== 渠道明细扩展：上期费用、本期费用、货量、单价全部带出 ==========
     channel_group = df_filter.groupby([time_col, "实际物流方式"]).agg(
         渠道费用=("总费用", "sum"),
         渠道重量=("重量", "sum")
@@ -505,25 +502,47 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
         curr_channel, prev_channel,
         on="实际物流方式", how="outer", suffixes=("_curr", "_prev")
     ).fillna(0)
+
+    # 计算渠道各项指标
     channel_merge["费用变动"] = channel_merge["渠道费用_curr"] - channel_merge["渠道费用_prev"]
     channel_merge["费用变动绝对值"] = channel_merge["费用变动"].abs()
+    # 渠道费用环比
+    channel_merge["费用环比"] = channel_merge.apply(
+        lambda x: x["费用变动"] / x["渠道费用_prev"] if x["渠道费用_prev"] != 0 else (-1 if x["渠道费用_curr"]==0 else 999), axis=1
+    )
+    # 上期单价、本期单价，本期费用为0则单价=0
+    channel_merge["上期单价"] = channel_merge.apply(lambda x: x["渠道费用_prev"]/x["渠道重量_prev"] if x["渠道重量_prev"]>0 else 0, axis=1)
+    channel_merge["本期单价"] = channel_merge.apply(lambda x: 0 if x["渠道费用_curr"]==0 else (x["渠道费用_curr"]/x["渠道重量_curr"] if x["渠道重量_curr"]>0 else 0), axis=1)
+    # 货量增减描述
+    channel_merge["货量变化说明"] = channel_merge.apply(lambda x: "出货量提升" if x["渠道重量_curr"]>x["渠道重量_prev"] else "出货量缩减", axis=1)
+
     top3_channel = channel_merge.sort_values("费用变动绝对值", ascending=False).head(3)
 
     text_parts.append("🔍 影响成本最大的3类物流渠道明细：")
     for _, row in top3_channel.iterrows():
         ch_name = row["实际物流方式"]
-        curr_cost = row["渠道费用_curr"]
-        prev_cost = row["渠道费用_prev"]
-        diff_cost = row["费用变动"]
-        diff_weight = row["渠道重量_curr"] - row["渠道重量_prev"]
+        f_prev = row["渠道费用_prev"]
+        f_curr = row["渠道费用_curr"]
+        f_diff = row["费用变动"]
+        f_rate = row["费用环比"]
 
-        if prev_cost == 0:
-            line = f"<br>• {ch_name}：上期无发货，本期新增花费{curr_cost:,.0f}元，拉高整体成本"
+        w_prev = row["渠道重量_prev"]
+        w_curr = row["渠道重量_curr"]
+        p_prev = row["上期单价"]
+        p_curr = row["本期单价"]
+        weight_desc = row["货量变化说明"]
+
+        if f_prev == 0:
+            line = (
+                f"<br>• {ch_name}：上期无发货，上期费用¥0，本期费用¥{f_curr:,.0f}，新增花费¥{f_diff:,.0f}元；"
+                f"上期货量0kg、本期货量{w_curr:,.0f}kg；上期单价¥0/kg、本期单价¥{p_curr:.2f}/kg，渠道货量{weight_desc}"
+            )
         else:
-            ch_rate = diff_cost / prev_cost
-            weight_desc = "出货量提升" if diff_weight > 0 else "出货量缩减"
-            rate_str = color_rate(ch_rate, f"{ch_rate:.2%}")
-            line = f"<br>• {ch_name}：费用环比{rate_str}，变动金额{diff_cost:,.0f}元，渠道货量{weight_desc}"
+            rate_str = color_rate(f_rate, f"{f_rate:.2%}")
+            line = (
+                f"<br>• {ch_name}：上期费用¥{f_prev:,.0f}，本期费用¥{f_curr:,.0f}，费用环比{rate_str}，变动金额¥{f_diff:,.0f}元；"
+                f"上期货量{w_prev:,.0f}kg、本期货量{w_curr:,.0f}kg；上期单价¥{p_prev:.2f}/kg、本期单价¥{p_curr:.2f}/kg，渠道货量{weight_desc}"
+            )
         text_parts.append(line)
 
     text_parts.append("<br><div style='font-size:13px;color:#666'>注：红色=上涨，绿色=下跌；优先展示对总成本影响最大的渠道</div>")
@@ -534,6 +553,7 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
         + "</div>"
     )
     return full_html
+
 # ========== 2. 新增【调用代码】关键！！ ==========
 # 自动匹配按周期/按月视图
 if view_mode == "按周期":
