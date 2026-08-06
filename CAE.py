@@ -494,7 +494,20 @@ def generate_logistics_analysis_text(df_filter, time_col="年份月份"):
     text_parts.append("<br><div style='font-size:13px;color:#666'>注：红色=上涨，绿色=下跌；优先展示对总成本影响最大的渠道</div>")
     full_html = f"<div style='padding:16px;background:#f8f9fa;border-radius:10px;margin:12px 0;line-height:1.7'>{''.join(text_parts)}</div>"
     return full_html
+# ========== 2. 新增【调用代码】关键！！ ==========
+# 自动匹配按周期/按月视图
+if view_mode == "按周期":
+    time_key = "年份周期"
+else:
+    time_key = "年份月份"
 
+# 执行函数拿到分析html文本
+analysis_content = generate_logistics_analysis_text(df, time_col=time_key)
+# 渲染到页面
+st.markdown(analysis_content, unsafe_allow_html=True)
+
+# 分割线，接下一个板块
+st.markdown("---")
 
 
 # ==============================================================================
