@@ -1438,7 +1438,6 @@ df_logi_month = df_cost.groupby(["年份月份", "实际物流方式"]).agg(
 # 关联月度总费用计算该渠道占比
 df_logi_month = pd.merge(df_logi_month, month_total_cost, on="年份月份", how="left")
 df_logi_month["渠道费用占比"] = (df_logi_month["总费用"] / df_logi_month["月度全部总费用"] *100).round(2)
-
 # -------- C‑3 完整月度明细表格 --------
 st.markdown("**各物流方式月度明细表格**")
 st.dataframe(df_logi_month.round(2), use_container_width=True, height=400)
