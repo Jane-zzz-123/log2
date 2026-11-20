@@ -1379,16 +1379,11 @@ fig_all.update_layout(
 )
 st.plotly_chart(fig_all, use_container_width=True)
 
-# ---------------------- 板块B：海运 VS 空运月份趋势【修正：使用源数据自带运输方式字段 + 千元&百分比标签】 ----------------------
-st.subheader("B｜空运 vs 海运 全历史月份趋势（依据源数据「运输方式」字段）")
+# ---------------------- 板块B：空运 vs 海运 全历史月份趋势【只保留总费用】 ----------------------
+st.subheader("B｜空运 vs 海运 全历史月份趋势（依据源数据「运输方式」字段，仅总费用）")
 
-# ✅ 直接使用原始字段运输方式，不再手动映射
 df_cat_month = df_cost.groupby(["年份月份", "运输方式"]).agg(
-    总费用=("总费用", "sum"),
-    总运费=("总运费", "sum"),
-    入库配置费=("入库配置费折算RMB", "sum"),
-    报关费=("报关费", "sum"),
-    总重量=("重量", "sum")
+    总费用=("总费用", "sum")
 ).reset_index()
 
 # 计算每月整体总费用，用于求占比
@@ -1396,34 +1391,23 @@ month_total_cost = df_cost.groupby("年份月份")["总费用"].sum().reset_inde
 df_cat_month = pd.merge(df_cat_month, month_total_cost, on="年份月份", how="left")
 df_cat_month["费用占比"] = (df_cat_month["总费用"] / df_cat_month["月度全部总费用"] *100).round(2)
 
-# B‑1 金额&重量双Y轴；金额系列打¥xxK标签，重量不打标签
+# B‑1：仅总费用折线（空运、海运），千元标签
 fig_cat = go.Figure()
 for cat in sorted(df_cat_month["运输方式"].unique()):
     sub = df_cat_month[df_cat_month["运输方式"]==cat]
     fig_cat.add_trace(go.Scatter(
-        x=sub["年份月份"], y=sub["总费用"], name=f"{cat}-总费用", mode="lines+markers+text", yaxis="y1",
-        text=sub["总费用"].apply(lambda v: f"¥{v/1000:.0f}K"), textposition="top center", textfont={"size":8}
-    ))
-    fig_cat.add_trace(go.Scatter(
-        x=sub["年份月份"], y=sub["总运费"], name=f"{cat}-总运费", mode="lines+markers+text", yaxis="y1",
-        text=sub["总运费"].apply(lambda v: f"¥{v/1000:.0f}K"), textposition="top center", textfont={"size":8}
-    ))
-    fig_cat.add_trace(go.Scatter(
-        x=sub["年份月份"], y=sub["入库配置费"], name=f"{cat}-入库配置费", mode="lines+markers+text", yaxis="y1",
-        text=sub["入库配置费"].apply(lambda v: f"¥{v/1000:.0f}K"), textposition="top center", textfont={"size":8}
-    ))
-    fig_cat.add_trace(go.Scatter(
-        x=sub["年份月份"], y=sub["报关费"], name=f"{cat}-报关费", mode="lines+markers+text", yaxis="y1",
-        text=sub["报关费"].apply(lambda v: f"¥{v/1000:.0f}K"), textposition="top center", textfont={"size":8}
-    ))
-    fig_cat.add_trace(go.Scatter(
-        x=sub["年份月份"], y=sub["总重量"], name=f"{cat}-总重量(kg)", mode="lines+markers", yaxis="y2"
+        x=sub["年份月份"],
+        y=sub["总费用"],
+        name=f"{cat}-总费用",
+        mode="lines+markers+text",
+        text=sub["总费用"].apply(lambda v: f"¥{v/1000:.0f}K"),
+        textposition="top center",
+        textfont={"size":9}
     ))
 
 fig_cat.update_layout(
-    height=580,
-    yaxis1=dict(title="金额 ¥", side="left"),
-    yaxis2=dict(title="重量 kg", side="right", overlaying="y"),
+    height=500,
+    yaxis_title="总费用 ¥",
     legend=dict(orientation="h", yanchor="bottom", y=1.02),
     margin=dict(l=20, r=20, t=40, b=40),
     xaxis=dict(type="category")
@@ -1455,60 +1439,9 @@ df_logi_month = df_cost.groupby(["年份月份", "实际物流方式"]).agg(
 df_logi_month = pd.merge(df_logi_month, month_total_cost, on="年份月份", how="left")
 df_logi_month["渠道费用占比"] = (df_logi_month["总费用"] / df_logi_month["月度全部总费用"] *100).round(2)
 
-# -------- C‑1：全部物流方式总费用折线图，标签单位千 ¥xK --------
-fig_logi_cost = go.Figure()
-all_logis = sorted(df_logi_month["实际物流方式"].dropna().unique())
-
-for logi in all_logis:
-    sub_df = df_logi_month[df_logi_month["实际物流方式"] == logi].copy()
-    text_labels = sub_df["总费用"].apply(lambda v: f"¥{v/1000:.0f}K")
-    fig_logi_cost.add_trace(go.Scatter(
-        x=sub_df["年份月份"],
-        y=sub_df["总费用"],
-        name=logi,
-        mode="lines+markers+text",
-        text=text_labels,
-        textposition="top center",
-        textfont={"size":9}
-    ))
-
-fig_logi_cost.update_layout(
-    title="各物流方式月度总费用",
-    height=580,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    margin=dict(l=20, r=20, t=50, b=40),
-    xaxis=dict(type="category"),
-    yaxis_title="总费用 ¥"
-)
-st.plotly_chart(fig_logi_cost, use_container_width=True)
-
-# -------- C‑2：全部物流方式 费用占比折线图，标签显示百分比 --------
-st.markdown("**各实际物流方式月度费用占整体占比（%）**")
-fig_logi_ratio_all = go.Figure()
-for logi in all_logis:
-    sub_df = df_logi_month[df_logi_month["实际物流方式"] == logi].copy()
-    text_pct = sub_df["渠道费用占比"].apply(lambda v: f"{v:.1f}%")
-    fig_logi_ratio_all.add_trace(go.Scatter(
-        x=sub_df["年份月份"],
-        y=sub_df["渠道费用占比"],
-        name=logi,
-        mode="lines+markers+text",
-        text=text_pct,
-        textposition="top center",
-        textfont={"size":9}
-    ))
-
-fig_logi_ratio_all.update_layout(
-    height=480,
-    yaxis_title="占比(%)",
-    xaxis=dict(type="category"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    margin=dict(l=20, r=20, t=30, b=30)
-)
-st.plotly_chart(fig_logi_ratio_all, use_container_width=True)
-
 # -------- C‑3 完整月度明细表格 --------
 st.markdown("**各物流方式月度明细表格**")
 st.dataframe(df_logi_month.round(2), use_container_width=True, height=400)
+
 
 
